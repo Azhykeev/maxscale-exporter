@@ -104,7 +104,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 ## Acknowledgments
 - [Prometheus Python Client](https://github.com/prometheus/client_python)
 - [aiohttp Library](https://github.com/aio-libs/aiohttp)
-- [MaxScale Documentation](https://mariadb.com/docs/maxscale/)
+- [MaxScale Documentation](https://mariadb.com/kb/en/maxscale/)
 
 ## Support
 If you encounter any issues, please open an issue in this repository.

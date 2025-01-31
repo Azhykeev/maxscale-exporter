@@ -15,13 +15,18 @@ maxscale_errors = Gauge('maxscale_errors', 'Number of errors encountered by MaxS
 maxscale_service_connections = Gauge('maxscale_service_connections', 'Connections per service', ['pod', 'service'])
 maxscale_server_connections = Gauge('maxscale_server_connections', 'Connections per server', ['pod', 'server'])
 maxscale_version = Gauge('maxscale_version', 'MaxScale version', ['pod', 'version'])
+maxscale_thread_usage = Gauge('maxscale_thread_usage', 'Thread usage in MaxScale', ['pod'])
+maxscale_listener_connections = Gauge('maxscale_listener_connections', 'Connections per listener', ['pod', 'listener'])
+maxscale_memory_usage = Gauge('maxscale_memory_usage', 'Memory usage of MaxScale in bytes', ['pod'])
+maxscale_cpu_usage = Gauge('maxscale_cpu_usage', 'CPU usage of MaxScale as a percentage', ['pod'])
 
 class MaxScaleExporter:
     def __init__(self, maxscale_pods):
         self.maxscale_pods = maxscale_pods
+        self.endpoints = ["/v1/maxscale", "/v1/services", "/v1/servers", "/v1/threads", "/v1/listeners"]
 
-    async def fetch_metrics(self, session, pod):
-        url = f"http://{pod}:8989/v1/metrics"  # Replace with your MaxScale metrics endpoint
+    async def fetch_metrics(self, session, pod, endpoint):
+        url = f"http://{pod}:8989{endpoint}"
         try:
             async with session.get(url) as response:
                 if response.status == 200:
@@ -32,7 +37,7 @@ class MaxScaleExporter:
                     maxscale_sessions.labels(pod=pod).set(data.get('sessions', 0))
                     maxscale_latency.labels(pod=pod).set(data.get('latency', 0))
                     maxscale_errors.labels(pod=pod).set(data.get('errors', 0))
-
+                    
                     # Service-level connections
                     for service, connections in data.get('services', {}).items():
                         maxscale_service_connections.labels(pod=pod, service=service).set(connections)
@@ -41,18 +46,34 @@ class MaxScaleExporter:
                     for server, connections in data.get('servers', {}).items():
                         maxscale_server_connections.labels(pod=pod, server=server).set(connections)
 
+                    # Thread usage
+                    for thread, usage in data.get('threads', {}).items():
+                        maxscale_thread_usage.labels(pod=pod).set(usage)
+
+                    # Listener connections
+                    for listener, connections in data.get('listeners', {}).items():
+                        maxscale_listener_connections.labels(pod=pod, listener=listener).set(connections)
+
+                    # Memory usage (if available)
+                    if 'memory' in data:
+                        maxscale_memory_usage.labels(pod=pod).set(data['memory'].get('total', 0))
+
+                    # CPU usage (if available)
+                    if 'cpu' in data:
+                        maxscale_cpu_usage.labels(pod=pod).set(data['cpu'].get('usage', 0))
+
                     # MaxScale version
                     version = data.get('version', 'unknown')
                     maxscale_version.labels(pod=pod, version=version).set(1)
                 else:
                     maxscale_up.labels(pod=pod).set(0)
         except Exception as e:
-            print(f"Error fetching metrics from {pod}: {e}")
+            print(f"Error fetching metrics from {pod}{endpoint}: {e}")
             maxscale_up.labels(pod=pod).set(0)
 
     async def collect_metrics(self):
         async with aiohttp.ClientSession() as session:
-            tasks = [self.fetch_metrics(session, pod) for pod in self.maxscale_pods]
+            tasks = [self.fetch_metrics(session, pod, endpoint) for pod in self.maxscale_pods for endpoint in self.endpoints]
             await asyncio.gather(*tasks)
 
 async def metrics_handler(request):
@@ -71,5 +92,5 @@ if __name__ == "__main__":
     app.router.add_get('/metrics', metrics_handler)
 
     # Expose metrics endpoint
-    prometheus_client.start_http_server(8001)
+    prometheus_client.start_http_server(8000)
     web.run_app(app, port=8000)

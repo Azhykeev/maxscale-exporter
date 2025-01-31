@@ -92,5 +92,5 @@ if __name__ == "__main__":
     app.router.add_get('/metrics', metrics_handler)
 
     # Expose metrics endpoint
-    prometheus_client.start_http_server(8000)
+    prometheus_client.start_http_server(8001)
     web.run_app(app, port=8000)

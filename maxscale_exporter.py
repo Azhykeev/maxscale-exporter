@@ -1,5 +1,5 @@
 import asyncio
-from aiohttp import web
+from aiohttp import web, BasicAuth
 import aiohttp
 import prometheus_client
 from prometheus_client import Gauge
@@ -21,14 +21,15 @@ maxscale_memory_usage = Gauge('maxscale_memory_usage', 'Memory usage of MaxScale
 maxscale_cpu_usage = Gauge('maxscale_cpu_usage', 'CPU usage of MaxScale as a percentage', ['pod'])
 
 class MaxScaleExporter:
-    def __init__(self, maxscale_pods):
+    def __init__(self, maxscale_pods, username, password):
         self.maxscale_pods = maxscale_pods
         self.endpoints = ["/v1/maxscale", "/v1/services", "/v1/servers", "/v1/threads", "/v1/listeners"]
+        self.auth = BasicAuth(username, password)
 
     async def fetch_metrics(self, session, pod, endpoint):
         url = f"http://{pod}:8989{endpoint}"
         try:
-            async with session.get(url) as response:
+            async with session.get(url, auth=self.auth) as response:
                 if response.status == 200:
                     data = await response.json()
                     maxscale_up.labels(pod=pod).set(1)
@@ -81,11 +82,13 @@ async def metrics_handler(request):
     return web.Response(text=prometheus_client.generate_latest().decode('utf-8'), content_type='text/plain')
 
 if __name__ == "__main__":
-    # Read MaxScale pods from environment variable or default to predefined list
+    # Read MaxScale pods from environment variables
     maxscale_pods = os.getenv("MAXSCALE_PODS", "maxscale-pod-1,maxscale-pod-2,maxscale-pod-3").split(",")
+    username = os.getenv("MAXSCALE_USER", "admin")
+    password = os.getenv("MAXSCALE_PASSWORD", "admin")
 
-    # Create the exporter instance
-    exporter = MaxScaleExporter(maxscale_pods)
+    # Create the exporter instance with authentication
+    exporter = MaxScaleExporter(maxscale_pods, username, password)
 
     # Start the web server
     app = web.Application()
